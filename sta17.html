@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Concrete Pontoon – Stability Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+body{font-family:Arial;margin:20px;background:#f5f7fa}
+h1{color:#003366}
+section{background:#fff;padding:15px;margin-bottom:15px;border-radius:6px}
+label{display:block;margin-top:8px}
+input{width:120px;margin-right:5px}
+button{margin-top:15px;padding:10px 20px;font-size:16px}
+canvas{border:1px solid #333;background:#eaf2ff;margin-top:10px}
+.output{font-weight:bold}
+.ok{color:green}
+.bad{color:red}
+</style>
+</head>
+<body>
+
+<h1>Concrete Pontoon – Stability Tool</h1>
+<h3>Project: Vengat | Elmar Marina</h3>
+
+<section>
+<h2>Input Data</h2>
+<label>Length (m) <input id="L" value="10"></label>
+<label>Width (m) <input id="B" value="3"></label>
+<label>Height (m) <input id="H" value="1.2"></label>
+<label>Concrete Area (m²) <input id="concArea" value="15"></label>
+<label>EPS Area (m²) <input id="epsArea" value="25"></label>
+<label>Concrete Density (kg/m³) <input id="concDen" value="2400"></label>
+<label>EPS Density (kg/m³) <input id="epsDen" value="20"></label>
+<label>Live Load (kg) <input id="live" value="2000"></label>
+<label>Decking & Fender (kg) <input id="deck" value="500"></label>
+<label>Eccentric Load Offset (m) <input id="ecc" value="0.5"></label>
+<label>Wave Height (m) <input id="wave" value="0.5"></label>
+<label>No. of Compartments <input id="comp" value="4"></label>
+<label>Counterweight Adjustment (kg) <input id="cwAdj" value="0"></label>
+<button id="calc">Calculate Stability</button>
+<button id="excel">Export Excel</button>
+</section>
+
+<section>
+<h2>Output Results</h2>
+<pre id="out" style="background:#f0f4ff;padding:12px;border-radius:6px"></pre>
+<h3>Stability Adjustment Guide</h3>
+<ul id="guide"></ul>
+</section>
+
+<section>
+<h2>Graphical Stability Drawing</h2>
+<p>Side view and top view with annotated engineering data: length, width, height, draft, freeboard, CG, CB, counterweight, and heel angle.</p>
+<canvas id="cvSide" width="900" height="400"></canvas>
+<canvas id="cvTop" width="900" height="250"></canvas>
+</section>
+
+<script>
+function calculate(){
+const L=+document.getElementById('L').value;
+const B=+document.getElementById('B').value;
+const H=+document.getElementById('H').value;
+const concArea=+document.getElementById('concArea').value;
+const epsArea=+document.getElementById('epsArea').value;
+const concDen=+document.getElementById('concDen').value;
+const epsDen=+document.getElementById('epsDen').value;
+const live=+document.getElementById('live').value;
+const deck=+document.getElementById('deck').value;
+const ecc=+document.getElementById('ecc').value;
+const wave=+document.getElementById('wave').value;
+const comp=+document.getElementById('comp').value;
+const cwAdj=+document.getElementById('cwAdj').value;
+
+// Volumes and weights
+const concVol=concArea*H;
+const epsVol=epsArea*H;
+const dead=concVol*concDen + epsVol*epsDen;
+let totalLoad=dead+live+deck+cwAdj;
+
+// Hydrostatics
+const rho=1025;
+const dispVol=totalLoad/rho;
+const draft=dispVol/(L*B);
+const freeboard=H-draft;
+const KB=draft/2;
+const KG=H*0.6;
+const BM=(B*B)/(12*draft);
+let GM=KB+BM-KG;
+const waveFactor=1-wave*0.05;
+const compFactor=1-((comp-1)*0.03);
+GM=GM*waveFactor*compFactor;
+const heelRad=(totalLoad*ecc)/(rho*L*B*GM);
+const heelDeg=Math.min(Math.abs(heelRad*57.3),90);
+let counter=0;
+if(GM<0.3){counter=(0.3-GM)*totalLoad;}
+
+const ok=GM>=0.3 && heelDeg<=90 && freeboard>0.3;
+
+// Output text
+const out=document.getElementById('out');
+out.textContent=`LOAD SUMMARY\nConcrete Weight: ${(concVol*concDen).toFixed(0)} kg\nEPS Weight: ${(epsVol*epsDen).toFixed(0)} kg\nDead Load: ${dead.toFixed(0)} kg\nLive Load: ${live.toFixed(0)} kg\nDecking & Fender: ${deck.toFixed(0)} kg\nCounterweight Adjusted: ${cwAdj.toFixed(0)} kg\nTotal Design Load: ${totalLoad.toFixed(0)} kg\n\nBUOYANCY\nBuoyant Force: ${totalLoad.toFixed(0)} kg\nReserve Buoyancy: ${(rho*dispVol-totalLoad).toFixed(0)} kg\nDraft: ${draft.toFixed(2)} m\nFreeboard: ${freeboard.toFixed(2)} m (${freeboard>0.3?'OK':'NOT OK'})\n\nSTABILITY – ALL SIDES\nGM: ${GM.toFixed(2)} m (Req. 0.30 m) → ${GM>=0.3?'OK':'NOT OK'}\nHeel Angle – Right Side: ${heelDeg.toFixed(2)}°\nHeel Angle – Left Side: ${(-heelDeg).toFixed(2)}°\nAllowable Heel: ±90°\nCounterweight Required: ${(counter+cwAdj).toFixed(0)} kg\n\nFACTORS\nWave Effect Factor: ${waveFactor.toFixed(2)}\nCompartment Factor: ${compFactor.toFixed(2)}\n\nOVERALL STABILITY STATUS: ${ok?'STABLE':'NOT STABLE – CORRECTION REQUIRED'}`;
+
+// Stability adjustment guide
+const guide=document.getElementById('guide');
+guide.innerHTML='';
+if(!ok){
+['Increase pontoon width (B) to improve GM','Add bottom counterweight to reduce KG','Reduce eccentric live load','Increase pontoon depth (H) or volume','Increase freeboard to meet ISO 12217'].forEach(t=>{const li=document.createElement('li');li.textContent=t;guide.appendChild(li);});
+}else{
+const li=document.createElement('li');li.textContent='Pontoon is stable in center, right and left loading conditions.';guide.appendChild(li);
+}
+
+// Draw Side and Top views
+drawSideView(L,B,H,draft,heelDeg,counter+cwAdj);
+drawTopView(L,B,heelDeg,counter+cwAdj);
+}
+
+function drawSideView(L,B,H,draft,heelDeg,counter){
+const c=document.getElementById('cvSide');
+const ctx=c.getContext('2d');
+ctx.clearRect(0,0,c.width,c.height);
+const scale=40;
+const baseY=300;
+const x0=150;
+const Lpx=L*scale; const Hpx=H*scale; const dpx=draft*scale;
+ctx.save();ctx.translate(x0,baseY);ctx.rotate(heelDeg*Math.PI/180);
+ctx.fillStyle='#ccc';ctx.fillRect(0,-Hpx,Lpx,Hpx);
+ctx.restore();
+
+// Waterline
+ctx.strokeStyle='blue';ctx.beginPath();ctx.moveTo(x0-100,baseY-dpx);ctx.lineTo(x0+Lpx+100,baseY-dpx);ctx.stroke();ctx.fillText('Water Line',x0+Lpx+10,baseY-dpx-5);
+// Draft arrow
+ctx.strokeStyle='black';ctx.beginPath();ctx.moveTo(x0+Lpx+50,baseY);ctx.lineTo(x0+Lpx+50,baseY-dpx);ctx.stroke();ctx.fillText(`Draft: ${draft.toFixed(2)} m`,x0+Lpx+55,baseY-dpx/2);
+// Freeboard arrow
+ctx.beginPath();ctx.moveTo(x0+Lpx+70,baseY-dpx);ctx.lineTo(x0+Lpx+70,baseY-dpx-Hpx+0);ctx.stroke();ctx.fillText(`Freeboard: ${(H-draft).toFixed(2)} m`,x0+Lpx+75,baseY-dpx-Hpx/2);
+// CG
+ctx.fillStyle='red';ctx.beginPath();ctx.arc(x0+Lpx/2,baseY-Hpx/2,6,0,Math.PI*2);ctx.fill();ctx.fillText('CG',x0+Lpx/2+10,baseY-Hpx/2);
+// Counterweight
+if(counter>0){ctx.fillStyle='black';ctx.fillRect(x0+Lpx/2-10,baseY+5,20,20);ctx.fillText('Counterweight',x0+Lpx/2+25,baseY+20);}
+// Heel angle
+ctx.strokeStyle='orange';ctx.beginPath();ctx.moveTo(x0+Lpx/2,baseY-Hpx/2);ctx.lineTo(x0+Lpx/2+50*Math.sin(heelDeg*Math.PI/180),baseY-Hpx/2+50*Math.cos(heelDeg*Math.PI/180));ctx.stroke();ctx.fillText(`Heel: ${heelDeg.toFixed(2)}°`,x0+Lpx/2+55,baseY-Hpx/2+25);
+// Dimensions
+ctx.strokeStyle='green';ctx.beginPath();ctx.moveTo(x0,baseY+10);ctx.lineTo(x0+Lpx,baseY+10);ctx.stroke();ctx.fillText(`Length: ${L} m`,x0+Lpx/2-20,baseY+25);
+ctx.beginPath();ctx.moveTo(x0-20,baseY);ctx.lineTo(x0-20,baseY-Hpx);ctx.stroke();ctx.fillText(`Height: ${H} m`,x0-60,baseY-Hpx/2);
+}
+
+function drawTopView(L,B,heelDeg,counter){
+const c=document.getElementById('cvTop');
+const ctx=c.getContext('2d');
+ctx.clearRect(0,0,c.width,c.height);
+const scale=40;
+const x0=150; const y0=50;
+const Lpx=L*scale; const Bpx=B*scale;
+ctx.fillStyle='#ccc';ctx.fillRect(x0,y0,Bpx,Lpx);
+ctx.strokeStyle='black';ctx.strokeRect(x0,y0,Bpx,Lpx);
+// CG
+ctx.fillStyle='red';ctx.beginPath();ctx.arc(x0+Bpx/2,y0+Lpx/2,6,0,Math.PI*2);ctx.fill();ctx.fillText('CG',x0+Bpx/2+10,y0+Lpx/2);
+// Counterweight
+if(counter>0){ctx.fillStyle='black';ctx.fillRect(x0+Bpx/2-10,y0+Lpx-10,20,20);ctx.fillText('Counterweight',x0+Bpx/2+25,y0+Lpx-10);}
+// Dimensions
+ctx.strokeStyle='green';ctx.beginPath();ctx.moveTo(x0,y0+Lpx+10);ctx.lineTo(x0+Bpx,y0+Lpx+10);ctx.stroke();ctx.fillText(`Width: ${B} m`,x0+Bpx/2-20,y0+Lpx+25);
+ctx.beginPath();ctx.moveTo(x0-30,y0);ctx.lineTo(x0-30,y0+Lpx);ctx.stroke();ctx.fillText(`Length: ${L} m`,x0-80,y0+Lpx/2);
+}
+
+document.getElementById('calc').addEventListener('click',calculate);
+document.getElementById('excel').addEventListener('click',()=>{
+let csv='Parameter,Value\n';
+csv+=document.getElementById('out').innerText.replace(/:/g,',');
+const blob=new Blob([csv],{type:'text/csv'});
+const a=document.createElement('a');
+a.href=URL.createObjectURL(blob);
+a.download='Concrete_Pontoon_Stability_Vengat_Elmar.csv';
+a.click();
+});
+</script>
+</body>
+</html>
